@@ -1,0 +1,11 @@
+order_id,product,category,price,quantity,date,region
+1,Laptop,Electronics,1200,2,2026-01-10,North
+2,Phone,Electronics,800,3,2026-01-11,South
+3,Chair,Furniture,150,4,2026-02-15,East
+4,Table,Furniture,300,2,2026-02-18,West
+5,Mouse,Electronics,,5,2026-03-01,North
+6,Sofa,Furniture,"500",1,2026-03-05,South
+7,Laptop,Electronics,1200,2,2026-01-10,North
+8,Keyboard,Electronics,abc,3,2026-04-01,East
+9,Notebook,Stationery,20,,2026-04-05,West
+10,Pen,Stationery,5,20,,North
