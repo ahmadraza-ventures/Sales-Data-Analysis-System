@@ -1,10 +1,23 @@
 # ============================================================
 # SALES PREDICTION MODEL
-# PART 1 - DATASET PREPARATION
+# COMPLETE MACHINE LEARNING PROJECT
 # ============================================================
 
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import (
+    mean_squared_error,
+    r2_score,
+    accuracy_score,
+    confusion_matrix,
+    classification_report
+)
 
 
 # ============================================================
@@ -14,7 +27,7 @@ import numpy as np
 df = pd.read_csv("sales_data.csv")
 
 print("=" * 60)
-print("SALES PREDICTION MODEL - PART 1")
+print("SALES PREDICTION MODEL")
 print("=" * 60)
 
 print("\nOriginal Dataset:")
@@ -22,145 +35,68 @@ print(df)
 
 
 # ============================================================
-# 2. CHECK DATASET INFORMATION
+# 2. DATA CLEANING
 # ============================================================
 
-print("\n" + "=" * 60)
-print("DATASET INFORMATION")
-print("=" * 60)
-
-df.info()
-
-
-# ============================================================
-# 3. CHECK MISSING VALUES
-# ============================================================
-
-print("\n" + "=" * 60)
-print("MISSING VALUES")
-print("=" * 60)
-
-print(df.isnull().sum())
-
-
-# ============================================================
-# 4. CONVERT PRICE TO NUMERIC
-# ============================================================
-
-df["price"] = (
-    df["price"]
-    .astype(str)
-    .str.replace("$", "", regex=False)
-    .str.replace(",", "", regex=False)
-)
-
+# Convert price into numeric
 df["price"] = pd.to_numeric(
     df["price"],
     errors="coerce"
 )
 
-
-# ============================================================
-# 5. CONVERT QUANTITY TO NUMERIC
-# ============================================================
-
+# Convert quantity into numeric
 df["quantity"] = pd.to_numeric(
     df["quantity"],
     errors="coerce"
 )
 
+# Remove rows where price or quantity is missing
+df = df.dropna(
+    subset=["price", "quantity"]
+).copy()
 
-# ============================================================
-# 6. HANDLE MISSING / INVALID PRICE
-# ============================================================
-
-price_median = df["price"].median()
-
-df["price"] = df["price"].fillna(
-    price_median
-)
+print("\nCleaned Dataset:")
+print(df)
 
 
 # ============================================================
-# 7. HANDLE MISSING QUANTITY
-# ============================================================
-
-quantity_median = df["quantity"].median()
-
-df["quantity"] = df["quantity"].fillna(
-    quantity_median
-)
-
-
-# ============================================================
-# 8. REMOVE DUPLICATE ROWS
-# ============================================================
-
-before_duplicates = len(df)
-
-df = df.drop_duplicates()
-
-after_duplicates = len(df)
-
-print("\n" + "=" * 60)
-print("DUPLICATE ROWS")
-print("=" * 60)
-
-print("Rows before removing duplicates:", before_duplicates)
-print("Rows after removing duplicates :", after_duplicates)
-
-
-# ============================================================
-# 9. CONVERT DATE TO DATETIME
-# ============================================================
-
-df["date"] = pd.to_datetime(
-    df["date"],
-    errors="coerce"
-)
-
-
-# ============================================================
-# 10. HANDLE MISSING DATE
-# ============================================================
-
-date_mode = df["date"].mode()[0]
-
-df["date"] = df["date"].fillna(
-    date_mode
-)
-
-
-# ============================================================
-# 11. CREATE REVENUE FEATURE
-#
-# Revenue = Price × Quantity
+# 3. CREATE REVENUE FEATURE
 # ============================================================
 
 df["revenue"] = (
     df["price"] * df["quantity"]
 )
 
+print("\nDataset with Revenue:")
+print(df)
 
-print("\n" + "=" * 60)
-print("REVENUE FEATURE")
-print("=" * 60)
 
+# ============================================================
+# 4. CREATE HIGH SALE TARGET
+# ============================================================
+
+average_quantity = df["quantity"].mean()
+
+df["high_sale"] = (
+    df["quantity"] > average_quantity
+).astype(int)
+
+print("\nAverage Quantity:")
+print(average_quantity)
+
+print("\nHigh Sale Column:")
 print(
     df[
-        ["price", "quantity", "revenue"]
+        ["quantity", "high_sale"]
     ]
 )
 
 
 # ============================================================
-# 12. ENCODE CATEGORY AND REGION
-#
-# Machine Learning cannot directly understand text categories.
-# pd.get_dummies() converts them into numerical columns.
+# 5. ENCODE CATEGORICAL COLUMNS
 # ============================================================
 
-df = pd.get_dummies(
+df_encoded = pd.get_dummies(
     df,
     columns=[
         "category",
@@ -170,200 +106,131 @@ df = pd.get_dummies(
     dtype=int
 )
 
-
-print("\n" + "=" * 60)
-print("DATASET AFTER ENCODING")
-print("=" * 60)
-
-print(df)
+print("\nEncoded Dataset:")
+print(df_encoded)
 
 
 # ============================================================
-# 13. CREATE FEATURES (X)
+# 6. SELECT ONLY REQUIRED FEATURES
+# ============================================================
 #
-# Features:
+# IMPORTANT:
+#
+# We DON'T use:
+# product
+# order_id
+# date
+#
+# We ONLY use:
 # price
 # quantity
-# encoded category
-# encoded region
-# ============================================================
-
-X = df.drop(
-    columns=[
-        "revenue",
-        "order_id",
-        "product",
-        "date"
-    ]
-)
-
-
-# ============================================================
-# 14. CREATE TARGET (y)
+# category
+# region
 #
-# Target = Revenue
+# After encoding, category and region become
+# numeric columns.
 # ============================================================
 
-y = df["revenue"]
+feature_columns = [
+    "price",
+    "quantity"
+]
+
+# Add encoded category columns
+for column in df_encoded.columns:
+
+    if column.startswith("category_"):
+        feature_columns.append(column)
+
+
+# Add encoded region columns
+for column in df_encoded.columns:
+
+    if column.startswith("region_"):
+        feature_columns.append(column)
+
+
+print("\nFeatures Used By ML Models:")
+
+for feature in feature_columns:
+    print("-", feature)
 
 
 # ============================================================
-# 15. DISPLAY FEATURES
+# 7. REGRESSION DATA
 # ============================================================
+
+X_reg = df_encoded[
+    feature_columns
+]
+
+y_reg = df_encoded[
+    "revenue"
+]
 
 print("\n" + "=" * 60)
-print("FEATURES (X)")
+print("REGRESSION DATA")
 print("=" * 60)
 
-print(X)
+print("\nX Regression:")
+print(X_reg)
 
-print("\nFeature Columns:")
-print(X.columns.tolist())
-
-
-# ============================================================
-# 16. DISPLAY TARGET
-# ============================================================
-
-print("\n" + "=" * 60)
-print("TARGET (y) - REVENUE")
-print("=" * 60)
-
-print(y)
+print("\ny Regression:")
+print(y_reg)
 
 
 # ============================================================
-# 17. CHECK DATA SHAPE
-# ============================================================
-
-print("\n" + "=" * 60)
-print("DATASET SHAPE")
-print("=" * 60)
-
-print("Dataset Shape:", df.shape)
-print("X Shape:", X.shape)
-print("y Shape:", y.shape)
-
-
-# ============================================================
-# 18. FINAL MISSING VALUE CHECK
-# ============================================================
-
-print("\n" + "=" * 60)
-print("FINAL MISSING VALUE CHECK")
-print("=" * 60)
-
-print("Missing values in X:")
-print(X.isnull().sum())
-
-print("\nMissing values in y:")
-print(y.isnull().sum())
-
-
-# ============================================================
-# PART 1 COMPLETED
-# ============================================================
-
-print("\n" + "=" * 60)
-print("PART 1 COMPLETED SUCCESSFULLY!")
-print("=" * 60)
-
-print("\nDataset is now ready for Machine Learning.")
-print("X = Features")
-print("y = Revenue Target")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ============================================================
-# PART 2 - REGRESSION MODEL
-# Train/Test Split + Linear Regression
-# ============================================================
-
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_squared_error, r2_score
-
-
-# ============================================================
-# 1. SPLIT DATA INTO TRAINING AND TESTING DATA
+# 8. TRAIN / TEST SPLIT
 # ============================================================
 
 X_train, X_test, y_train, y_test = train_test_split(
-    X,
-    y,
+    X_reg,
+    y_reg,
     test_size=0.2,
     random_state=42
 )
 
+print("\nRegression:")
+print(
+    "X_train Shape:",
+    X_train.shape
+)
 
-print("\n" + "=" * 60)
-print("TRAIN / TEST SPLIT")
-print("=" * 60)
+print(
+    "X_test Shape:",
+    X_test.shape
+)
 
-print("Training Features (X_train):", X_train.shape)
-print("Testing Features (X_test):", X_test.shape)
-print("Training Target (y_train):", y_train.shape)
-print("Testing Target (y_test):", y_test.shape)
+print(
+    "y_train Shape:",
+    y_train.shape
+)
+
+print(
+    "y_test Shape:",
+    y_test.shape
+)
 
 
 # ============================================================
-# 2. CREATE LINEAR REGRESSION MODEL
+# 9. LINEAR REGRESSION
 # ============================================================
 
-model = LinearRegression()
+linear_model = LinearRegression()
 
-
-# ============================================================
-# 3. TRAIN THE MODEL
-# ============================================================
-
-model.fit(
+linear_model.fit(
     X_train,
     y_train
 )
 
-
-print("\n" + "=" * 60)
-print("LINEAR REGRESSION")
-print("=" * 60)
-
-print("Model trained successfully!")
-
-
-# ============================================================
-# 4. PREDICT REVENUE
-# ============================================================
-
-y_pred = model.predict(
+# Predict revenue
+y_pred = linear_model.predict(
     X_test
 )
 
 
-print("\n" + "=" * 60)
-print("REVENUE PREDICTIONS")
-print("=" * 60)
-
-print("Actual Revenue:")
-print(y_test.values)
-
-print("\nPredicted Revenue:")
-print(y_pred)
-
-
 # ============================================================
-# 5. MEAN SQUARED ERROR
+# 10. REGRESSION EVALUATION
 # ============================================================
 
 mse = mean_squared_error(
@@ -371,470 +238,240 @@ mse = mean_squared_error(
     y_pred
 )
 
-
-# ============================================================
-# 6. R² SCORE
-# ============================================================
-
 r2 = r2_score(
     y_test,
     y_pred
 )
 
-
-# ============================================================
-# 7. MODEL EVALUATION
-# ============================================================
-
 print("\n" + "=" * 60)
-print("MODEL EVALUATION")
+print("LINEAR REGRESSION RESULTS")
 print("=" * 60)
 
-print("Mean Squared Error (MSE):", mse)
-print("R² Score:", r2)
+print("\nActual Revenue:")
+print(y_test.values)
+
+print("\nPredicted Revenue:")
+print(y_pred)
+
+print("\nMean Squared Error:")
+print(mse)
+
+print("\nR2 Score:")
+print(r2)
 
 
 # ============================================================
-# 8. MODEL COEFFICIENTS
+# 11. CLASSIFICATION DATA
 # ============================================================
 
-print("\n" + "=" * 60)
-print("FEATURE COEFFICIENTS")
-print("=" * 60)
+X_class = df_encoded[
+    feature_columns
+]
 
-for feature, coefficient in zip(
-    X.columns,
-    model.coef_
-):
-    print(
-        f"{feature}: {coefficient:.2f}"
-    )
-
-
-# ============================================================
-# 9. INTERCEPT
-# ============================================================
-
-print("\nIntercept:", model.intercept_)
-
-
-# ============================================================
-# PART 2 COMPLETED
-# ============================================================
-
-print("\n" + "=" * 60)
-print("PART 2 COMPLETED SUCCESSFULLY!")
-print("=" * 60)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ============================================================
-# PART 3 - CLASSIFICATION MODEL
-# High Sale Prediction using Logistic Regression
-# ============================================================
-
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import (
-    accuracy_score,
-    confusion_matrix,
-    classification_report
-)
-
-
-# ============================================================
-# 1. CALCULATE AVERAGE QUANTITY
-# ============================================================
-
-average_quantity = df["quantity"].mean()
-
-print("\n" + "=" * 60)
-print("AVERAGE QUANTITY")
-print("=" * 60)
-
-print("Average Quantity:", average_quantity)
-
-
-# ============================================================
-# 2. CREATE HIGH_SALE TARGET
-#
-# quantity > average → 1
-# quantity <= average → 0
-# ============================================================
-
-df["high_sale"] = (
-    df["quantity"] > average_quantity
-).astype(int)
-
-
-print("\n" + "=" * 60)
-print("HIGH SALE TARGET")
-print("=" * 60)
-
-print(
-    df[
-        ["quantity", "high_sale"]
-    ]
-)
-
-
-# ============================================================
-# 3. CREATE CLASSIFICATION FEATURES
-#
-# We remove:
-# revenue   → not needed for high_sale prediction
-# high_sale → target
-# order_id  → identifier
-# product   → text
-# date      → not being used
-# ============================================================
-
-X_classification = df.drop(
-    columns=[
-        "revenue",
-        "high_sale",
-        "order_id",
-        "product",
-        "date"
-    ]
-)
-
-
-# ============================================================
-# 4. CREATE CLASSIFICATION TARGET
-# ============================================================
-
-y_classification = df["high_sale"]
-
+y_class = df_encoded[
+    "high_sale"
+]
 
 print("\n" + "=" * 60)
 print("CLASSIFICATION DATA")
 print("=" * 60)
 
-print("X Classification:")
-print(X_classification)
-
-print("\nY Classification:")
-print(y_classification)
-
-
-# ============================================================
-# 5. TRAIN / TEST SPLIT
-# ============================================================
-
-X_train_class, X_test_class, y_train_class, y_test_class = train_test_split(
-    X_classification,
-    y_classification,
-    test_size=0.2,
-    random_state=42,
-    stratify=y_classification
+print("\nClass Distribution:")
+print(
+    y_class.value_counts()
 )
 
 
-print("\n" + "=" * 60)
-print("CLASSIFICATION TRAIN / TEST SPLIT")
-print("=" * 60)
+# ============================================================
+# 12. TRAIN / TEST SPLIT FOR CLASSIFICATION
+# ============================================================
+#
+# stratify remove kiya gaya hai because dataset bohat small hai.
+# ============================================================
 
-print("Training Data:", X_train_class.shape)
-print("Testing Data :", X_test_class.shape)
+X_train_c, X_test_c, y_train_c, y_test_c = train_test_split(
+    X_class,
+    y_class,
+    test_size=0.2,
+    random_state=42
+)
+
+print("\nClassification:")
+print(
+    "X_train Shape:",
+    X_train_c.shape
+)
+
+print(
+    "X_test Shape:",
+    X_test_c.shape
+)
+
+print(
+    "y_train Shape:",
+    y_train_c.shape
+)
+
+print(
+    "y_test Shape:",
+    y_test_c.shape
+)
 
 
 # ============================================================
-# 6. CREATE LOGISTIC REGRESSION MODEL
+# 13. STANDARD SCALER
 # ============================================================
 
-classification_model = LogisticRegression(
+scaler = StandardScaler()
+
+X_train_scaled = scaler.fit_transform(
+    X_train_c
+)
+
+X_test_scaled = scaler.transform(
+    X_test_c
+)
+
+print("\nFeatures Scaled Successfully.")
+
+
+# ============================================================
+# 14. LOGISTIC REGRESSION
+# ============================================================
+
+logistic_model = LogisticRegression(
     max_iter=1000
 )
 
+logistic_model.fit(
+    X_train_scaled,
+    y_train_c
+)
 
-# ============================================================
-# 7. TRAIN CLASSIFICATION MODEL
-# ============================================================
-
-classification_model.fit(
-    X_train_class,
-    y_train_class
+# Prediction
+logistic_pred = logistic_model.predict(
+    X_test_scaled
 )
 
 
-print("\n" + "=" * 60)
-print("LOGISTIC REGRESSION")
-print("=" * 60)
-
-print("Classification model trained successfully!")
-
-
 # ============================================================
-# 8. MAKE PREDICTIONS
+# 15. LOGISTIC REGRESSION EVALUATION
 # ============================================================
 
-y_class_pred = classification_model.predict(
-    X_test_class
+logistic_accuracy = accuracy_score(
+    y_test_c,
+    logistic_pred
 )
 
-
-print("\n" + "=" * 60)
-print("HIGH SALE PREDICTIONS")
-print("=" * 60)
-
-print("Actual High Sale:")
-print(y_test_class.values)
-
-print("\nPredicted High Sale:")
-print(y_class_pred)
-
-
-# ============================================================
-# 9. CALCULATE ACCURACY
-# ============================================================
-
-accuracy = accuracy_score(
-    y_test_class,
-    y_class_pred
+logistic_cm = confusion_matrix(
+    y_test_c,
+    logistic_pred
 )
 
-
 print("\n" + "=" * 60)
-print("ACCURACY")
+print("LOGISTIC REGRESSION RESULTS")
 print("=" * 60)
 
-print("Accuracy:", accuracy)
+print("\nAccuracy:")
+print(logistic_accuracy)
 
+print("\nConfusion Matrix:")
+print(logistic_cm)
 
-# ============================================================
-# 10. CONFUSION MATRIX
-# ============================================================
-
-cm = confusion_matrix(
-    y_test_class,
-    y_class_pred
-)
-
-
-print("\n" + "=" * 60)
-print("CONFUSION MATRIX")
-print("=" * 60)
-
-print(cm)
-
-
-# ============================================================
-# 11. CLASSIFICATION REPORT
-# ============================================================
-
-print("\n" + "=" * 60)
-print("CLASSIFICATION REPORT")
-print("=" * 60)
+print("\nClassification Report:")
 
 print(
     classification_report(
-        y_test_class,
-        y_class_pred,
+        y_test_c,
+        logistic_pred,
         zero_division=0
     )
 )
 
 
 # ============================================================
-# PART 3 COMPLETED
+# 16. RANDOM FOREST CLASSIFIER
 # ============================================================
 
-print("\n" + "=" * 60)
-print("PART 3 COMPLETED SUCCESSFULLY!")
-print("=" * 60)
-
-
-
-
-
-
-
-
-
-
-
-# ============================================================
-# PART 4 - ADVANCED CLASSIFICATION
-# StandardScaler + Random Forest + Feature Importance
-# ============================================================
-
-from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestClassifier
-import matplotlib.pyplot as plt
-
-
-# ============================================================
-# 1. STANDARD SCALER
-# ============================================================
-
-scaler = StandardScaler()
-
-
-# Fit scaler on training data
-X_train_scaled = scaler.fit_transform(
-    X_train_class
-)
-
-
-# Transform testing data
-X_test_scaled = scaler.transform(
-    X_test_class
-)
-
-
-print("\n" + "=" * 60)
-print("STANDARD SCALER")
-print("=" * 60)
-
-print("Features have been standardized successfully!")
-
-
-# ============================================================
-# 2. LOGISTIC REGRESSION WITH SCALED DATA
-# ============================================================
-
-scaled_logistic_model = LogisticRegression(
-    max_iter=1000
-)
-
-scaled_logistic_model.fit(
-    X_train_scaled,
-    y_train_class
-)
-
-
-# Predict using scaled test data
-y_scaled_logistic_pred = (
-    scaled_logistic_model.predict(
-        X_test_scaled
-    )
-)
-
-
-# Calculate accuracy
-scaled_logistic_accuracy = accuracy_score(
-    y_test_class,
-    y_scaled_logistic_pred
-)
-
-
-print("\n" + "=" * 60)
-print("SCALED LOGISTIC REGRESSION")
-print("=" * 60)
-
-print(
-    "Logistic Regression Accuracy:",
-    scaled_logistic_accuracy
-)
-
-
-# ============================================================
-# 3. RANDOM FOREST CLASSIFIER
-# ============================================================
-
-random_forest_model = RandomForestClassifier(
+random_forest = RandomForestClassifier(
     n_estimators=100,
     random_state=42
 )
 
-
-# ============================================================
-# 4. TRAIN RANDOM FOREST
-# ============================================================
-
-random_forest_model.fit(
-    X_train_class,
-    y_train_class
+random_forest.fit(
+    X_train_c,
+    y_train_c
 )
 
+# Prediction
+rf_pred = random_forest.predict(
+    X_test_c
+)
+
+
+# ============================================================
+# 17. RANDOM FOREST EVALUATION
+# ============================================================
+
+rf_accuracy = accuracy_score(
+    y_test_c,
+    rf_pred
+)
+
+rf_cm = confusion_matrix(
+    y_test_c,
+    rf_pred
+)
 
 print("\n" + "=" * 60)
-print("RANDOM FOREST")
+print("RANDOM FOREST RESULTS")
 print("=" * 60)
 
-print("Random Forest model trained successfully!")
+print("\nAccuracy:")
+print(rf_accuracy)
 
+print("\nConfusion Matrix:")
+print(rf_cm)
 
-# ============================================================
-# 5. RANDOM FOREST PREDICTIONS
-# ============================================================
+print("\nClassification Report:")
 
-y_rf_pred = random_forest_model.predict(
-    X_test_class
+print(
+    classification_report(
+        y_test_c,
+        rf_pred,
+        zero_division=0
+    )
 )
 
 
-print("\nActual High Sale:")
-print(y_test_class.values)
-
-print("\nRandom Forest Predictions:")
-print(y_rf_pred)
-
-
 # ============================================================
-# 6. RANDOM FOREST ACCURACY
+# 18. MODEL COMPARISON
 # ============================================================
-
-random_forest_accuracy = accuracy_score(
-    y_test_class,
-    y_rf_pred
-)
-
 
 print("\n" + "=" * 60)
-print("RANDOM FOREST ACCURACY")
+print("MODEL COMPARISON")
 print("=" * 60)
+
+print(
+    "\nLogistic Regression Accuracy:",
+    logistic_accuracy
+)
 
 print(
     "Random Forest Accuracy:",
-    random_forest_accuracy
+    rf_accuracy
 )
 
-
-# ============================================================
-# 7. COMPARE LOGISTIC REGRESSION
-#    AND RANDOM FOREST
-# ============================================================
-
-print("\n" + "=" * 60)
-print("MODEL ACCURACY COMPARISON")
-print("=" * 60)
-
-print(
-    f"Logistic Regression Accuracy: "
-    f"{scaled_logistic_accuracy:.2f}"
-)
-
-print(
-    f"Random Forest Accuracy: "
-    f"{random_forest_accuracy:.2f}"
-)
-
-
-if random_forest_accuracy > scaled_logistic_accuracy:
-
-    print(
-        "\nRandom Forest performed better."
-    )
-
-elif random_forest_accuracy < scaled_logistic_accuracy:
+if logistic_accuracy > rf_accuracy:
 
     print(
         "\nLogistic Regression performed better."
+    )
+
+elif rf_accuracy > logistic_accuracy:
+
+    print(
+        "\nRandom Forest performed better."
     )
 
 else:
@@ -845,43 +482,44 @@ else:
 
 
 # ============================================================
-# 8. FEATURE IMPORTANCE
+# 19. RANDOM FOREST FEATURE IMPORTANCE
 # ============================================================
 
 feature_importance = (
-    random_forest_model.feature_importances_
+    random_forest.feature_importances_
 )
 
-
-# ============================================================
-# 9. CREATE FEATURE IMPORTANCE DATAFRAME
-# ============================================================
-
 importance_df = pd.DataFrame({
-    "Feature": X_classification.columns,
+
+    "Feature": feature_columns,
+
     "Importance": feature_importance
+
 })
 
 
-# Sort from highest to lowest
+# Sort by importance
 importance_df = importance_df.sort_values(
     by="Importance",
     ascending=False
 )
 
-
 print("\n" + "=" * 60)
 print("FEATURE IMPORTANCE")
 print("=" * 60)
 
-print(importance_df)
+print(
+    importance_df
+)
 
 
 # ============================================================
-# 10. PLOT FEATURE IMPORTANCE
+# 20. FEATURE IMPORTANCE PLOT
 # ============================================================
 
-plt.figure(figsize=(10, 6))
+plt.figure(
+    figsize=(10, 6)
+)
 
 plt.bar(
     importance_df["Feature"],
@@ -907,198 +545,166 @@ plt.xticks(
 
 plt.tight_layout()
 
-
-# ============================================================
-# 11. SAVE FEATURE IMPORTANCE GRAPH
-# ============================================================
-
-plt.savefig(
-    "feature_importance.png"
-)
-
 plt.show()
 
 
 # ============================================================
-# PART 4 COMPLETED
+# 21. CROSS VALIDATION
+# ============================================================
+#
+# Dataset bohat small hai.
+#
+# Hum available samples ke according CV folds choose
+# kar rahe hain.
 # ============================================================
 
+class_counts = y_class.value_counts()
+
+minimum_class_count = class_counts.min()
+
+cv_folds = min(
+    3,
+    minimum_class_count
+)
+
 print("\n" + "=" * 60)
-print("PART 4 COMPLETED SUCCESSFULLY!")
+print("CROSS VALIDATION")
 print("=" * 60)
 
 print(
-    "\nFeature importance graph saved as:"
+    "\nAvailable samples per class:"
 )
 
-print("feature_importance.png")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ============================================================
-# PART 5 - CROSS VALIDATION
-# Check Model Stability
-# ============================================================
-
-from sklearn.model_selection import cross_val_score
-
-
-# ============================================================
-# 1. CROSS VALIDATION - LOGISTIC REGRESSION
-# ============================================================
-
-logistic_cv_scores = cross_val_score(
-    scaled_logistic_model,
-    X_train_scaled,
-    y_train_class,
-    cv=3,
-    scoring="accuracy"
-)
-
-
-print("\n" + "=" * 60)
-print("LOGISTIC REGRESSION - CROSS VALIDATION")
-print("=" * 60)
-
-print("Cross Validation Scores:")
-print(logistic_cv_scores)
+print(class_counts)
 
 print(
-    "Mean CV Accuracy:",
-    logistic_cv_scores.mean()
+    "\nCV Folds:",
+    cv_folds
 )
 
 
 # ============================================================
-# 2. CROSS VALIDATION - RANDOM FOREST
+# 22. CROSS VALIDATION
 # ============================================================
 
-random_forest_cv_scores = cross_val_score(
-    random_forest_model,
-    X_train_class,
-    y_train_class,
-    cv=3,
-    scoring="accuracy"
-)
+if cv_folds >= 2:
 
+    # --------------------------------------------------------
+    # Logistic Regression CV
+    # --------------------------------------------------------
 
-print("\n" + "=" * 60)
-print("RANDOM FOREST - CROSS VALIDATION")
-print("=" * 60)
-
-print("Cross Validation Scores:")
-print(random_forest_cv_scores)
-
-print(
-    "Mean CV Accuracy:",
-    random_forest_cv_scores.mean()
-)
-
-
-# ============================================================
-# 3. FINAL MODEL COMPARISON
-# ============================================================
-
-print("\n" + "=" * 60)
-print("FINAL MODEL COMPARISON")
-print("=" * 60)
-
-print(
-    f"Logistic Regression Test Accuracy: "
-    f"{scaled_logistic_accuracy:.2f}"
-)
-
-print(
-    f"Random Forest Test Accuracy: "
-    f"{random_forest_accuracy:.2f}"
-)
-
-print(
-    f"Logistic Regression CV Accuracy: "
-    f"{logistic_cv_scores.mean():.2f}"
-)
-
-print(
-    f"Random Forest CV Accuracy: "
-    f"{random_forest_cv_scores.mean():.2f}"
-)
-
-
-# ============================================================
-# 4. DETERMINE BEST MODEL USING CV
-# ============================================================
-
-if (
-    random_forest_cv_scores.mean()
-    >
-    logistic_cv_scores.mean()
-):
-
-    print(
-        "\nRandom Forest has better "
-        "cross-validation performance."
+    logistic_cv_scores = cross_val_score(
+        logistic_model,
+        X_train_scaled,
+        y_train_c,
+        cv=cv_folds,
+        scoring="accuracy"
     )
 
-elif (
-    random_forest_cv_scores.mean()
-    <
-    logistic_cv_scores.mean()
-):
+    print(
+        "\nLogistic Regression CV Scores:"
+    )
 
     print(
-        "\nLogistic Regression has better "
-        "cross-validation performance."
+        logistic_cv_scores
+    )
+
+    print(
+        "\nLogistic Regression Average CV Accuracy:"
+    )
+
+    print(
+        logistic_cv_scores.mean()
+    )
+
+
+    # --------------------------------------------------------
+    # Random Forest CV
+    # --------------------------------------------------------
+
+    rf_cv_scores = cross_val_score(
+        random_forest,
+        X_class,
+        y_class,
+        cv=cv_folds,
+        scoring="accuracy"
+    )
+
+    print(
+        "\nRandom Forest CV Scores:"
+    )
+
+    print(
+        rf_cv_scores
+    )
+
+    print(
+        "\nRandom Forest Average CV Accuracy:"
+    )
+
+    print(
+        rf_cv_scores.mean()
     )
 
 else:
 
     print(
-        "\nBoth models have the same "
-        "cross-validation performance."
+        "\nCross Validation skipped."
+    )
+
+    print(
+        "Dataset mein har class ke enough samples nahi hain."
     )
 
 
 # ============================================================
-# 5. CROSS VALIDATION STABILITY
+# 23. FINAL SUMMARY
 # ============================================================
 
 print("\n" + "=" * 60)
-print("MODEL STABILITY")
+print("FINAL SUMMARY")
 print("=" * 60)
 
+print("\nREGRESSION")
+
 print(
-    "Logistic Regression CV Standard Deviation:",
-    logistic_cv_scores.std()
+    "Mean Squared Error:",
+    mse
 )
 
 print(
-    "Random Forest CV Standard Deviation:",
-    random_forest_cv_scores.std()
+    "R2 Score:",
+    r2
 )
 
 
-# ============================================================
-# PART 5 COMPLETED
-# ============================================================
+print("\nCLASSIFICATION")
+
+print(
+    "Logistic Regression Accuracy:",
+    logistic_accuracy
+)
+
+print(
+    "Random Forest Accuracy:",
+    rf_accuracy
+)
+
+
+print("\nFEATURES USED")
+
+for feature in feature_columns:
+
+    print(
+        "-",
+        feature
+    )
+
 
 print("\n" + "=" * 60)
-print("PART 5 COMPLETED SUCCESSFULLY!")
-print("=" * 60)
 
-print("\nSALES PREDICTION PROJECT COMPLETED!")
+print(
+    "SALES PREDICTION MODEL COMPLETED SUCCESSFULLY!"
+)
+
+print("=" * 60)
